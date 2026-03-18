@@ -23,11 +23,21 @@ func (cfg *apiConfig) handlerAdminMetrics(w http.ResponseWriter, r *http.Request
 	w.Write([]byte(html))
 }
 
-func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) handlerAdminReset(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		respondWithError(w, 403, "Forbidden")
+	}
+
+	ctx := r.Context()
+
+	err := cfg.db.DeleteAllUsers(ctx)
+	if err != nil {
+		respondWithError(w, 500, "Could not reset users")
+	}
+
 	cfg.fileserverHits.Store(0)
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+
+	respondWithJson(w, 200, map[string]string{"status": "ok"})
 }
 
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,4 +85,29 @@ func cleanChirp(body string) string {
 	}
 
 	return strings.Join(words, " ")
+}
+
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	var req createUserRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		respondWithError(w, 400, "Invalid JSON")
+	}
+
+	ctx := r.Context()
+
+	dbUser, err := cfg.db.CreateUser(ctx, req.Email)
+	if err != nil {
+		respondWithError(w, 500, "Could not create user")
+	}
+
+	user := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	respondWithJson(w, 201, user)
 }
