@@ -1,12 +1,20 @@
 package main
 
 import (
+	"database/sql"
+	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	"github.com/PaprTigrs/chirpy/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	dbQueries      *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -17,10 +25,26 @@ func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	dbURL := os.Getenv("DB_URL")
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dbQueries := database.New(db)
+
 	const filepathRoot = "."
 	const port = "8080"
 
-	apiCfg := &apiConfig{}
+	apiCfg := &apiConfig{
+		dbQueries: dbQueries,
+	}
 	mux := http.NewServeMux()
 
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
